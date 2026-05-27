@@ -375,7 +375,7 @@ describe("web processMessage inbound context", () => {
           chatType: "direct",
           body: "/status",
           senderE164: "+5535998627740",
-          selfE164: "+5519999835286",
+          selfE164: "+15550009999",
           accountId: "default",
         },
       }),
