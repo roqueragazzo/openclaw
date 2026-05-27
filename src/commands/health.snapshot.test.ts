@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { telegramPlugin } from "../../extensions/telegram/src/channel.js";
+import type { ChannelPlugin } from "../channels/plugins/types.js";
+import type { ChannelRuntimeSnapshot } from "../gateway/server-channels.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
-import { createTestRegistry } from "../test-utils/channel-plugins.js";
+import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
 import type { HealthSummary } from "./health.js";
 import { getHealthSnapshot } from "./health.js";
 
@@ -259,5 +261,63 @@ describe("getHealthSnapshot", () => {
     expect(main?.heartbeat.every).toBe("disabled");
     expect(ops?.heartbeat.everyMs).toBeTruthy();
     expect(ops?.heartbeat.every).toBe("1h");
+  });
+
+  it("includes live runtime channel state when provided", async () => {
+    const runtimeAwarePlugin: ChannelPlugin = {
+      ...createChannelTestPluginBase({
+        id: "runtime-aware",
+        label: "Runtime Aware",
+        config: {
+          listAccountIds: () => ["default"],
+          resolveAccount: () => ({ configured: true }),
+          isConfigured: () => true,
+        },
+      }),
+      status: {
+        buildChannelSummary: ({ snapshot }) => ({
+          configured: snapshot.configured ?? false,
+          running: snapshot.running ?? false,
+          connected: snapshot.connected ?? false,
+          lastError: snapshot.lastError ?? null,
+        }),
+      },
+    };
+    setActivePluginRegistry(
+      createTestRegistry([
+        { pluginId: "runtime-aware", plugin: runtimeAwarePlugin, source: "test" },
+      ]),
+    );
+    testConfig = {};
+    testStore = {};
+
+    const runtimeSnapshot: ChannelRuntimeSnapshot = {
+      channels: {
+        "runtime-aware": {
+          accountId: "default",
+          running: true,
+          connected: true,
+          lastError: null,
+        },
+      },
+      channelAccounts: {
+        "runtime-aware": {
+          default: {
+            accountId: "default",
+            running: true,
+            connected: true,
+            lastError: null,
+          },
+        },
+      },
+    };
+
+    const snap = await getHealthSnapshot({ probe: false, runtimeSnapshot });
+    expect(snap.channels["runtime-aware"]).toMatchObject({
+      configured: true,
+      running: true,
+      connected: true,
+      lastError: null,
+    });
   });
 });

@@ -8,6 +8,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import { loadConfig, readBestEffortConfig } from "../config/config.js";
 import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
+import type { ChannelRuntimeSnapshot } from "../gateway/server-channels.js";
 import { info } from "../globals.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { formatErrorMessage } from "../infra/errors.js";
@@ -419,6 +420,7 @@ export const formatHealthChannelLines = (
 export async function getHealthSnapshot(params?: {
   timeoutMs?: number;
   probe?: boolean;
+  runtimeSnapshot?: ChannelRuntimeSnapshot;
 }): Promise<HealthSummary> {
   const timeoutMs = params?.timeoutMs;
   const cfg = loadConfig();
@@ -451,6 +453,20 @@ export async function getHealthSnapshot(params?: {
   const channels: Record<string, ChannelHealthSummary> = {};
   const channelOrder = listChannelPlugins().map((plugin) => plugin.id);
   const channelLabels: Record<string, string> = {};
+  const runtime = params?.runtimeSnapshot;
+
+  const resolveRuntimeSnapshot = (
+    channelId: string,
+    accountId: string,
+    defaultAccountId: string,
+  ): ChannelAccountSnapshot | undefined => {
+    const channelRuntimeAccounts = runtime?.channelAccounts[channelId];
+    const defaultRuntime = runtime?.channels[channelId];
+    return (
+      channelRuntimeAccounts?.[accountId] ??
+      (accountId === defaultAccountId ? defaultRuntime : undefined)
+    );
+  };
 
   for (const plugin of listChannelPlugins()) {
     channelLabels[plugin.id] = plugin.meta.label ?? plugin.id;
@@ -522,7 +538,9 @@ export async function getHealthSnapshot(params?: {
         debugHealth("probe.bot", { channel: plugin.id, accountId, username: bot.username });
       }
 
+      const runtimeAccountSnapshot = resolveRuntimeSnapshot(plugin.id, accountId, defaultAccountId);
       const snapshot: ChannelAccountSnapshot = {
+        ...runtimeAccountSnapshot,
         accountId,
         enabled,
         configured,
